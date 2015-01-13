@@ -31,14 +31,16 @@ char* formatHeader(char* version, int error) {
     char* response;
     if(error == 400) {
         response = strcat(buffer, "Bad Request\n");
+    } else if(error == 404) {
+        response = strcat(buffer, "Not Found\n");
+    } else if(error == 200) {
+        response = strcat(buffer, "OK\n");
     }
     free(buffer);
     return buffer;
 }
 
-void errorResponse(int new_fd, int error) {
-    char* response = formatHeader("1.1", error);
-    printf("Responding with an error: %s\n", response);
+void sendResponse(int new_fd, char* response) {
     int length = strlen(response);
     int sentLength = 0;
     while(length != sentLength) {
@@ -51,14 +53,54 @@ void errorResponse(int new_fd, int error) {
         response = &response[thisTransfer];
         sentLength += thisTransfer;
     }
+}
+
+void errorResponse(int new_fd, int error) {
+    char* response = formatHeader("1.1", error);
+    sendResponse(new_fd, response);
     close(new_fd);
 }
 
 void prepareResponse(int new_fd, char* uri, char* version) {
-    if(strcmp(uri, "\\")) {
+    if(strcmp(uri, "\\") == 0) {
         uri = "\\index.html";
     }
     printf("Going to respond %s, %s\n", version, uri);
+    if(access(uri, F_OK) == 0) {
+        FILE *file = fopen(uri, "r");
+        if(!file) {
+            char* responseHeader = formatHeader("1.1", 403);
+            sendResponse(new_fd, responseHeader);
+        } else {
+            fseek(file, 0, SEEK_END);
+            long size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+            void* theFile = malloc(size);
+            if(theFile) {
+                fread(theFile, 1, size, file);
+                char* responseHeader = formatHeader("1.1", 200);
+                sendResponse(new_fd, responseHeader);
+                long sent = 0;
+                while(sent != size) {
+                    long thisSize = send(new_fd, theFile, size - sent, 0);
+                    if(thisSize == -1) {
+                        perror("Could not send");
+                        close(new_fd);
+                        return;
+                    }
+                    theFile = &theFile[thisSize];
+                    sent += thisSize;
+                }
+            } else {
+                char* responseHeader = formatHeader("1.1", 500);
+                sendResponse(new_fd, responseHeader);
+            }
+        }
+    } else {
+        char* responseHeader = formatHeader("1.1", 404);
+        sendResponse(new_fd, responseHeader);
+    }
+    close(new_fd);
 }
 
 int isNewline(unsigned char c) {
@@ -94,16 +136,16 @@ void handleConnection(int new_fd) {
     int lineNum = 0;
     int hasMethod = 0, hasResource = 0;
     int methodLength = 0, versionLength = 0;
-    char resource[URILENGTH];  // This will hold the URI resource
+    char resource[URILENGTH+1];  // This will hold the URI resource
     int resourceLength = 0;
-    char version[3];
+    char version[4];
     int versionStringLength = 0;
 
     int linePosition = 0;
     int lineHasSeparator = 0;
 
-    memset(resource, 0, URILENGTH);
-    memset(version, 0, 3);
+    memset(resource, 0, URILENGTH+1);
+    memset(version, 0, 4);
 
     for( ;(len = recv(new_fd, buff, BUFFSIZE, 0)) > 0; memset(buff, 0, BUFFSIZE)) {
         int position = 0;
@@ -211,7 +253,7 @@ void handleConnection(int new_fd) {
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
                     prepareResponse(new_fd, resource, version);
-                    break;
+                    return;
                 }
                 if(linePosition == 0) {
                     if(isWhitespace(c)) {
