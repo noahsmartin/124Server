@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
-
+#include <string>
 
 #define SERVICE "4587"
 #define BUFFSIZE 1024
@@ -25,7 +25,7 @@ void* get_addr(struct sockaddr *sa) {
 }
 
 char* formatHeader(char* version, int error) {
-    char* buffer = malloc(15);
+    char* buffer = (char*) malloc(15);
     bzero(buffer, 15);
     sprintf(buffer, "HTTP/%s %d ", version, error);
     char* response;
@@ -40,7 +40,7 @@ char* formatHeader(char* version, int error) {
     return buffer;
 }
 
-void sendResponse(int new_fd, char* response) {
+void sendResponse(int new_fd, const char* response) {
     int length = strlen(response);
     int sentLength = 0;
     while(length != sentLength) {
@@ -62,8 +62,8 @@ void errorResponse(int new_fd, int error) {
 }
 
 void prepareResponse(int new_fd, char* uri, char* version) {
-    if(strcmp(uri, "\\") == 0) {
-        uri = "\\index.html";
+    if(strcmp(uri, "/") == 0) {
+        uri = "index.html";
     }
     printf("Going to respond %s, %s\n", version, uri);
     if(access(uri, F_OK) == 0) {
@@ -75,11 +75,15 @@ void prepareResponse(int new_fd, char* uri, char* version) {
             fseek(file, 0, SEEK_END);
             long size = ftell(file);
             fseek(file, 0, SEEK_SET);
-            void* theFile = malloc(size);
+            unsigned char* theFile = (unsigned char*)malloc(size);
             if(theFile) {
                 fread(theFile, 1, size, file);
                 char* responseHeader = formatHeader("1.1", 200);
                 sendResponse(new_fd, responseHeader);
+                std::string contentLength = "Content-Length: ";
+                contentLength.append(std::to_string(size));
+                contentLength.append("\n\n");
+                sendResponse(new_fd, contentLength.c_str());
                 long sent = 0;
                 while(sent != size) {
                     long thisSize = send(new_fd, theFile, size - sent, 0);
@@ -88,7 +92,7 @@ void prepareResponse(int new_fd, char* uri, char* version) {
                         close(new_fd);
                         return;
                     }
-                    theFile = &theFile[thisSize];
+                    theFile = &(theFile[thisSize]);
                     sent += thisSize;
                 }
             } else {
@@ -264,15 +268,7 @@ void handleConnection(int new_fd) {
                     }
                 }
                 if(c == ':') {
-                    if(lineHasSeparator) {
-                        // We don't expect multiple colons in one header.
-                        free(rec);
-                        free(buff);
-                        errorResponse(new_fd, 400);
-                        return;
-                    } else {
-                        lineHasSeparator = 1;
-                    }
+                    lineHasSeparator = 1;
                 }
                 if(isNewline(c)) {
                     linePosition = 0;

@@ -1,4 +1,4 @@
 all: server
 
-server: server.c
-	gcc server.c -o server
+server: server.cc
+	g++ server.cc -o server
