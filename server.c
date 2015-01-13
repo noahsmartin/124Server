@@ -24,8 +24,41 @@ void* get_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*) sa)->sin6_addr);
 }
 
+char* formatHeader(char* version, int error) {
+    char* buffer = malloc(15);
+    bzero(buffer, 15);
+    sprintf(buffer, "HTTP/%s %d ", version, error);
+    char* response;
+    if(error == 400) {
+        response = strcat(buffer, "Bad Request\n");
+    }
+    free(buffer);
+    return buffer;
+}
+
 void errorResponse(int new_fd, int error) {
-    printf("Responding with an error: %d\n", error);
+    char* response = formatHeader("1.1", error);
+    printf("Responding with an error: %s\n", response);
+    int length = strlen(response);
+    int sentLength = 0;
+    while(length != sentLength) {
+        int thisTransfer = send(new_fd, response, length - sentLength, 0);
+        if(thisTransfer < 0) {
+            perror("Could not send");
+            close(new_fd);
+            return;
+        }
+        response = &response[thisTransfer];
+        sentLength += thisTransfer;
+    }
+    close(new_fd);
+}
+
+void prepareResponse(int new_fd, char* uri, char* version) {
+    if(strcmp(uri, "\\")) {
+        uri = "\\index.html";
+    }
+    printf("Going to respond %s, %s\n", version, uri);
 }
 
 int isNewline(unsigned char c) {
@@ -173,12 +206,11 @@ void handleConnection(int new_fd) {
             }
         }
         if(lineNum > 0) {
-            int stop = 0;
             for(; position < len; position++) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    stop = 1;
+                    prepareResponse(new_fd, resource, version);
                     break;
                 }
                 if(linePosition == 0) {
@@ -207,14 +239,11 @@ void handleConnection(int new_fd) {
                     linePosition++;
                 }
             }
-            if(stop) {
-                break;
-            }
         }
     }
     free(rec);
     free(buff);
-    close(new_fd);
+    errorResponse(new_fd, 500);
 }
 
 int main(int argc, char* argv[]) {
