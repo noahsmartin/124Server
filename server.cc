@@ -63,8 +63,18 @@ void errorResponse(int new_fd, int error) {
 
 void prepareResponse(int new_fd, char* uri, char* version) {
     if(strcmp(uri, "/") == 0) {
-        uri = "index.html";
+        uri = "/index.html";
     }
+    std::string uriString = uri;
+    if(uri[0] == '/') {
+        printf("changing\n");
+        printf("length: %d\n", strlen(uri));
+        printf("uri: %s\n", uri);
+        std::string location = "root";
+        location.append(uriString);
+        uriString = location;
+    }
+    uri = (char*) uriString.c_str();
     printf("Going to respond %s, %s\n", version, uri);
     if(access(uri, F_OK) == 0) {
         FILE *file = fopen(uri, "r");
