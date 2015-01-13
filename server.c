@@ -134,83 +134,83 @@ void handleConnection(int new_fd) {
             }
             // Process the HTTP version
             while(versionStringLength == 0 && position < len && isWhitespace(rec[position])) {
-    		    position++;
-    		}
-    		for(; versionStringLength < 5 && position < len; versionStringLength++, position++) {
-    			if(versionString[versionStringLength] != rec[position]) {
-    				free(rec);
-    				free(buff);
-    				errorResponse(new_fd, 400);
-    				return;
-    			}
-    		}
-		    while(!isNewline(rec[position]) && position < len) {
-	    		if(versionLength > 3) {
-	    			// Version shouldn't be longer than 3.
-	    			free(rec);
-	    			free(buff);
+                position++;
+            }
+            for(; versionStringLength < 5 && position < len; versionStringLength++, position++) {
+                if(versionString[versionStringLength] != rec[position]) {
+                    free(rec);
+                    free(buff);
                     errorResponse(new_fd, 400);
-	    		    return;
-	    		}
-	    		version[versionLength] = rec[position];
-	    		position++;
-	    		versionLength++;
-    	    }
-    	    if(position == len) {
-    	    	// Wait for more data.
-    	    	continue;
-    	    }
-    		if(isNewline(rec[position])) {
-    			if(!strcmp(version, "1.0") && !strcmp(version, "1.1")) {
-    				free(rec);
-    				free(buff);
-    				errorResponse(new_fd, 400);
-    				return;
-    			}
-    			printf("Got the version: %s\n", version);
-    			lineNum = 1;
-    			position++;
-    		}
+                    return;
+                }
+            }
+            while(!isNewline(rec[position]) && position < len) {
+                if(versionLength > 3) {
+                    // Version shouldn't be longer than 3.
+                    free(rec);
+                    free(buff);
+                    errorResponse(new_fd, 400);
+                    return;
+                }
+                version[versionLength] = rec[position];
+                position++;
+                versionLength++;
+            }
+            if(position == len) {
+                // Wait for more data.
+                continue;
+            }
+            if(isNewline(rec[position])) {
+                if(!strcmp(version, "1.0") && !strcmp(version, "1.1")) {
+                    free(rec);
+                    free(buff);
+                    errorResponse(new_fd, 400);
+                    return;
+                }
+                printf("Got the version: %s\n", version);
+                lineNum = 1;
+                position++;
+            }
         }
-	    if(lineNum > 0) {
-	    	int stop = 0;
-	    	for(; position < len; position++) {
-	    		unsigned char c = rec[position];
-	        	if(linePosition == 0 && isNewline(c)) {
-	        	    // Request is finished.
-	        	    stop = 1;
-	        	    break;
-	        	}
-	        	if(linePosition == 0) {
-	        		if(isWhitespace(c)) {
-	        			linePosition++;
-	        			continue;
-	        		} else {
-	        			lineHasSeparator = 0;
-	        		}
-	        	}
-	        	if(c == ':') {
-	        		if(lineHasSeparator) {
-		        		// We don't expect multiple colons in one header.
-		        		free(rec);
-	    				free(buff);
-	    				errorResponse(new_fd, 400);
-	    				return;
-    			    } else {
-    			    	lineHasSeparator = 1;
-    			    }
-	        	}
-	        	if(isNewline(c)) {
-	        		linePosition = 0;
-	        		lineNum++;
-	        	} else {
-	        		linePosition++;
-	        	}
-	        }
-	        if(stop) {
-	        	break;
-	        }
-	    }
+        if(lineNum > 0) {
+            int stop = 0;
+            for(; position < len; position++) {
+                unsigned char c = rec[position];
+                if(linePosition == 0 && isNewline(c)) {
+                    // Request is finished.
+                    stop = 1;
+                    break;
+                }
+                if(linePosition == 0) {
+                    if(isWhitespace(c)) {
+                        linePosition++;
+                        continue;
+                    } else {
+                        lineHasSeparator = 0;
+                    }
+                }
+                if(c == ':') {
+                    if(lineHasSeparator) {
+                        // We don't expect multiple colons in one header.
+                        free(rec);
+                        free(buff);
+                        errorResponse(new_fd, 400);
+                        return;
+                    } else {
+                        lineHasSeparator = 1;
+                    }
+                }
+                if(isNewline(c)) {
+                    linePosition = 0;
+                    lineNum++;
+                } else {
+                    linePosition++;
+                }
+            }
+            if(stop) {
+                break;
+            }
+        }
     }
     free(rec);
     free(buff);
@@ -218,20 +218,20 @@ void handleConnection(int new_fd) {
 }
 
 int main(int argc, char* argv[]) {
-	int sock_fd, new_fd;
-	socklen_t addr_size = sizeof(struct sockaddr_storage);
-	struct  addrinfo hints, *res, *p;
-	struct sockaddr_storage their_addr;
-	int result;
-	char s[INET6_ADDRSTRLEN];
+    int sock_fd, new_fd;
+    socklen_t addr_size = sizeof(struct sockaddr_storage);
+    struct  addrinfo hints, *res, *p;
+    struct sockaddr_storage their_addr;
+    int result;
+    char s[INET6_ADDRSTRLEN];
 
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
 
 
-	if ((result = getaddrinfo(NULL, SERVICE, &hints, &res)) != 0) {
+    if ((result = getaddrinfo(NULL, SERVICE, &hints, &res)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
         return 1;
     }
@@ -246,14 +246,14 @@ int main(int argc, char* argv[]) {
 
         int allow = 1;
         if(setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &allow, sizeof(int)) == -1) {
-        	perror("couldnt setsockopt");
-        	exit(1);
+            perror("couldnt setsockopt");
+            exit(1);
         }
 
         if(bind(sock_fd, p->ai_addr, p->ai_addrlen) == -1) {
             // Try another
-        	close(sock_fd);
-        	continue;
+            close(sock_fd);
+            continue;
         }
         break;
     }
@@ -261,18 +261,18 @@ int main(int argc, char* argv[]) {
 
 
     if(listen(sock_fd, 10) == -1) {
-    	perror("couldn't listen");
-    	exit(1);
+        perror("couldn't listen");
+        exit(1);
     }
 
     while(1) {
-    	new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
-    	if(new_fd == -1) {
-    		// Something went wrong, we couldn't connect to the client
-    		continue;
-    	}
+        new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
+        if(new_fd == -1) {
+            // Something went wrong, we couldn't connect to the client
+            continue;
+        }
 
-    	inet_ntop(their_addr.ss_family, get_addr((struct sockaddr *)&their_addr),
+        inet_ntop(their_addr.ss_family, get_addr((struct sockaddr *)&their_addr),
             s, sizeof s);
         printf("server: got connection from %s\n", s);
 
