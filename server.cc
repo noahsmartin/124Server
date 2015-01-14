@@ -24,39 +24,41 @@ void* get_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*) sa)->sin6_addr);
 }
 
-char* formatHeader(const char* version, int error) {
-    char* buffer = (char*) malloc(15);
+std::string* formatHeader(const char* version, int error) {
+    char buffer[15];
     bzero(buffer, 15);
     sprintf(buffer, "HTTP/%s %d ", version, error);
-    char* response;
+    std::string* result = new std::string(buffer);
     if(error == 400) {
-        response = strcat(buffer, "Bad Request\n");
+        result->append("Bad Request\n");
     } else if(error == 404) {
-        response = strcat(buffer, "Not Found\n");
+        result->append("Not Found\n");
     } else if(error == 200) {
-        response = strcat(buffer, "OK\n");
+        result->append("OK\n");
     }
-    free(buffer);
-    return buffer;
+    return result;
 }
 
-void sendResponse(int new_fd, const char* response) {
-    int length = strlen(response);
+void sendResponse(int new_fd, std::string* response) {
+    int length = response->length();
     int sentLength = 0;
+    const char* responseArray = response->c_str();
     while(length != sentLength) {
-        int thisTransfer = send(new_fd, response, length - sentLength, 0);
+        int thisTransfer = send(new_fd, responseArray, length - sentLength, 0);
         if(thisTransfer < 0) {
             perror("Could not send");
             close(new_fd);
+            free(response);
             return;
         }
-        response = &response[thisTransfer];
+        responseArray = &responseArray[thisTransfer];
         sentLength += thisTransfer;
     }
+    free(response);
 }
 
 void errorResponse(int new_fd, int error) {
-    char* response = formatHeader("1.1", error);
+    std::string* response = formatHeader("1.1", error);
     sendResponse(new_fd, response);
     close(new_fd);
 }
@@ -78,7 +80,7 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
     if(access(uri, F_OK) == 0) {
         FILE *file = fopen(uri, "r");
         if(!file) {
-            char* responseHeader = formatHeader("1.1", 403);
+            std::string* responseHeader = formatHeader("1.1", 403);
             sendResponse(new_fd, responseHeader);
         } else {
             fseek(file, 0, SEEK_END);
@@ -87,12 +89,12 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
             unsigned char* theFile = (unsigned char*)malloc(size);
             if(theFile) {
                 fread(theFile, 1, size, file);
-                char* responseHeader = formatHeader("1.1", 200);
+                std::string* responseHeader = formatHeader("1.1", 200);
                 sendResponse(new_fd, responseHeader);
-                std::string contentLength = "Content-Length: ";
-                contentLength.append(std::to_string(size));
-                contentLength.append("\n\n");
-                sendResponse(new_fd, contentLength.c_str());
+                std::string* contentLength = new std::string("Content-Length: ");
+                contentLength->append(std::to_string(size));
+                contentLength->append("\n\n");
+                sendResponse(new_fd, contentLength);
                 long sent = 0;
                 while(sent != size) {
                     long thisSize = send(new_fd, theFile, size - sent, 0);
@@ -105,12 +107,12 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
                     sent += thisSize;
                 }
             } else {
-                char* responseHeader = formatHeader("1.1", 500);
+                std::string* responseHeader = formatHeader("1.1", 500);
                 sendResponse(new_fd, responseHeader);
             }
         }
     } else {
-        char* responseHeader = formatHeader("1.1", 404);
+        std::string* responseHeader = formatHeader("1.1", 404);
         sendResponse(new_fd, responseHeader);
     }
     close(new_fd);
