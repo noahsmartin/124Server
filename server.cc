@@ -67,9 +67,11 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
     }
     std::string uriString = uri;
     if(uri[0] == '/') {
-        std::string location = "root";
-        location.append(uriString);
-        uriString = location;
+        std::string home = getenv("HOME");
+        std::string location = "/root";
+        home.append(location);
+        home.append(uriString);
+        uriString = home;
     }
     uri = (char*) uriString.c_str();
     printf("Going to respond %s, %s\n", version, uri);
