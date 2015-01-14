@@ -24,7 +24,7 @@ void* get_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*) sa)->sin6_addr);
 }
 
-char* formatHeader(char* version, int error) {
+char* formatHeader(const char* version, int error) {
     char* buffer = (char*) malloc(15);
     bzero(buffer, 15);
     sprintf(buffer, "HTTP/%s %d ", version, error);
@@ -61,15 +61,12 @@ void errorResponse(int new_fd, int error) {
     close(new_fd);
 }
 
-void prepareResponse(int new_fd, char* uri, char* version) {
+void prepareResponse(int new_fd, const char* uri, char* version) {
     if(strcmp(uri, "/") == 0) {
         uri = "/index.html";
     }
     std::string uriString = uri;
     if(uri[0] == '/') {
-        printf("changing\n");
-        printf("length: %d\n", strlen(uri));
-        printf("uri: %s\n", uri);
         std::string location = "root";
         location.append(uriString);
         uriString = location;
