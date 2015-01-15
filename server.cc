@@ -72,8 +72,27 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
         std::string home = getenv("HOME");
         std::string location = "/root";
         home.append(location);
-        home.append(uriString);
-        uriString = home;
+        location = home;
+        location.append(uriString);
+        errno = 0;
+        char* path = realpath(location.c_str(), NULL);
+        if(errno) {
+            free(path);
+            perror("Error getting real path");
+            // This would happen if the file does not exist
+            errorResponse(new_fd, 404);
+            return;
+        }
+        uriString = path;
+        free(path);
+        // This makes sure the requested file is in the ~/root directory.
+        if(uriString.compare(0, home.length(), home)) {
+            errorResponse(new_fd, 404);
+            return;
+        }
+    } else {
+        std::string* responseHeader = formatHeader("1.1", 404);
+        sendResponse(new_fd, responseHeader);
     }
     uri = (char*) uriString.c_str();
     printf("Going to respond %s, %s\n", version, uri);
