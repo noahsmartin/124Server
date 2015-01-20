@@ -63,16 +63,13 @@ void errorResponse(int new_fd, int error) {
     close(new_fd);
 }
 
-void prepareResponse(int new_fd, const char* uri, char* version) {
+void prepareResponse(int new_fd, const char* root, const char* uri, char* version) {
     if(strcmp(uri, "/") == 0) {
         uri = "/index.html";
     }
     std::string uriString = uri;
+    std::string location(root);
     if(uri[0] == '/') {
-        std::string home = getenv("HOME");
-        std::string location = "/root";
-        home.append(location);
-        location = home;
         location.append(uriString);
         errno = 0;
         char* path = realpath(location.c_str(), NULL);
@@ -86,7 +83,7 @@ void prepareResponse(int new_fd, const char* uri, char* version) {
         uriString = path;
         free(path);
         // This makes sure the requested file is in the ~/root directory.
-        if(uriString.compare(0, home.length(), home)) {
+        if(uriString.compare(0, location.length(), location)) {
             errorResponse(new_fd, 404);
             return;
         }
@@ -158,7 +155,7 @@ int removeCarriageReturn(unsigned char* source, unsigned char* destination, int 
     return length;
 }
 
-void handleConnection(int new_fd) {
+void handleConnection(int new_fd, const char* root) {
     unsigned char* rec = (unsigned char*) malloc(BUFFSIZE);
     unsigned char* buff = (unsigned char*) malloc(BUFFSIZE);
     memset(rec, 0, BUFFSIZE);
@@ -237,7 +234,7 @@ void handleConnection(int new_fd) {
                     continue;
                 }
                 if(isWhitespace(rec[position])) {
-                    printf("got the resouce %s\n", resource);
+                    printf("got the resource %s\n", resource);
                     hasResource = 1;
                 }
             }
@@ -286,7 +283,7 @@ void handleConnection(int new_fd) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    prepareResponse(new_fd, resource, version);
+                    prepareResponse(new_fd, root, resource, version);
                     return;
                 }
                 if(linePosition == 0) {
@@ -328,7 +325,7 @@ int main(int argc, char* argv[]) {
     hints.ai_flags = AI_PASSIVE;
 
 
-    if ((result = getaddrinfo(NULL, SERVICE, &hints, &res)) != 0) {
+    if ((result = getaddrinfo(NULL, argv[1], &hints, &res)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
         return 1;
     }
@@ -374,7 +371,7 @@ int main(int argc, char* argv[]) {
         printf("server: got connection from %s\n", s);
 
         if(fork() == 0) {
-            handleConnection(new_fd);
+            handleConnection(new_fd, argv[2]);
         }
 
         close(new_fd);
