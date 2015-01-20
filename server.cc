@@ -64,6 +64,22 @@ void errorResponse(int new_fd, int error) {
     close(new_fd);
 }
 
+int checkFileType(unsigned char *buffer, long length) {
+    char jpg_start[2] = {0xFF,0xD8};
+    char jpg_end[2] = {0xFF, 0xD9};
+    char png_sig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+ 
+    printf("\nlength: %ld\n", length);
+    if(length >= 4 && memcmp(buffer, jpg_start, 2) == 0 
+       && memcmp(buffer+length-2, jpg_end, 2) == 0) {
+            return 1; 
+        }
+    else if(length >= 8 && memcmp(buffer, png_sig, 8) == 0) {
+            return 2;
+        }
+    return 0;
+}
+
 void prepareResponse(int new_fd, const char* root, const char* uri, char* version) {
     std::string uriString = uri;
     std::string location(root);
@@ -107,13 +123,29 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
             fseek(file, 0, SEEK_SET);
             unsigned char* theFile = (unsigned char*)malloc(size);
             if(theFile) {
-                fread(theFile, 1, size, file);
+                long size = fread(theFile, 1, size, file);
                 std::string* responseHeader = formatHeader("1.1", 200);
                 sendResponse(new_fd, responseHeader);
                 std::string* contentLength = new std::string("Content-Length: ");
                 contentLength->append(std::to_string(size));
-                contentLength->append("\n\n");
+                contentLength->append("\n");
                 sendResponse(new_fd, contentLength);
+                std::string* contentType = new std::string("Content-Type: ");
+                
+                switch(checkFileType(theFile, size)) {
+                    case 1:
+                        contentType->append("image/jpeg");
+                        break;
+                    case 2:
+                        contentType->append("image/png");
+                        break; 
+                    default:
+                        contentType->append("text/html");
+                        break;
+                }
+                contentType->append("\n\n");
+                sendResponse(new_fd, contentType);
+
                 long sent = 0;
                 while(sent != size) {
                     long thisSize = send(new_fd, theFile, size - sent, 0);
@@ -136,6 +168,8 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
     }
     close(new_fd);
 }
+
+
 
 int isNewline(unsigned char c) {
     return (c == '\n' || c == '\r');
