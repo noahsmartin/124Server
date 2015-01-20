@@ -361,6 +361,18 @@ int main(int argc, char* argv[]) {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
+    if(argc < 3) {
+        printf("Usage: ./httpd [PORT] [PATH]\n");
+        exit(1);
+    }
+    errno = 0;
+    char* thepath = realpath(argv[2], NULL);
+    if(errno) {
+        printf("Invalid path.\n");
+        exit(1);
+    }
+    free(thepath);
+
 
     if ((result = getaddrinfo(NULL, argv[1], &hints, &res)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
