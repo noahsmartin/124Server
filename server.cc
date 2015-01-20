@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <string>
 
@@ -64,14 +65,16 @@ void errorResponse(int new_fd, int error) {
 }
 
 void prepareResponse(int new_fd, const char* root, const char* uri, char* version) {
-    if(strcmp(uri, "/") == 0) {
-        uri = "/index.html";
-    }
     std::string uriString = uri;
     std::string location(root);
     int compare_length = location.length();
     if(uri[0] == '/') {
         location.append(uriString);
+        struct stat st_buf;
+        lstat(location.c_str(), &st_buf);
+        if(S_ISDIR(st_buf.st_mode)){
+            location.append("/index.html");
+        }
         errno = 0;
         char* path = realpath(location.c_str(), NULL);
         if(errno) {
@@ -283,7 +286,6 @@ void handleConnection(int new_fd, const char* root) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    printf("finished request");
                     prepareResponse(new_fd, root, resource, version);
                     return;
                 }
