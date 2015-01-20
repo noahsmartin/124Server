@@ -123,7 +123,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
             fseek(file, 0, SEEK_SET);
             unsigned char* theFile = (unsigned char*)malloc(size);
             if(theFile) {
-                long size = fread(theFile, 1, size, file);
+                fread(theFile, 1, size, file);
                 std::string* responseHeader = formatHeader("1.1", 200);
                 sendResponse(new_fd, responseHeader);
                 std::string* contentLength = new std::string("Content-Length: ");
