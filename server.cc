@@ -69,6 +69,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
     }
     std::string uriString = uri;
     std::string location(root);
+    int compare_length = location.length();
     if(uri[0] == '/') {
         location.append(uriString);
         errno = 0;
@@ -82,8 +83,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
         }
         uriString = path;
         free(path);
-        // This makes sure the requested file is in the ~/root directory.
-        if(uriString.compare(0, location.length(), location)) {
+        if(uriString.compare(0,compare_length, root)) {
             errorResponse(new_fd, 404);
             return;
         }
@@ -283,6 +283,7 @@ void handleConnection(int new_fd, const char* root) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
+                    printf("finished request");
                     prepareResponse(new_fd, root, resource, version);
                     return;
                 }
@@ -371,7 +372,9 @@ int main(int argc, char* argv[]) {
         printf("server: got connection from %s\n", s);
 
         if(fork() == 0) {
-            handleConnection(new_fd, argv[2]);
+            char * root_path = realpath(argv[2], NULL);
+            handleConnection(new_fd, root_path);
+            free(root_path);
         }
 
         close(new_fd);
