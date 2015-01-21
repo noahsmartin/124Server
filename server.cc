@@ -86,7 +86,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
     int compare_length = location.length();
     if(uri[0] == '/') {
         location.append(uriString);
-        struct stat st_buf;
+        struct stat st_buf = {0};
         lstat(location.c_str(), &st_buf);
         if(S_ISDIR(st_buf.st_mode)){
             location.append("/index.html");
@@ -113,13 +113,15 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
     }
     uri = (char*) uriString.c_str();
     printf("Going to respond %s, %s\n", version, uri);
-    FILE *file = fopen(uri, "r");
-    if(!file) {
-        // We know the file exists by this point so if we can't open
-        // it it's because of a permissions problem.
+
+    struct stat perm_buf = {0};
+    lstat(uri, &perm_buf);
+    // check if file is world-readable
+    if((perm_buf.st_mode & S_IROTH) == 0) {
         std::string* responseHeader = formatHeader("1.1", 403);
         sendResponse(new_fd, responseHeader);
     } else {
+        FILE *file = fopen(uri, "r");
         fseek(file, 0, SEEK_END);
         long size = ftell(file);
         fseek(file, 0, SEEK_SET);
