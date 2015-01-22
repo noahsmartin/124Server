@@ -122,48 +122,51 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
         sendResponse(new_fd, responseHeader);
     } else {
         FILE *file = fopen(uri, "r");
-        fseek(file, 0, SEEK_END);
-        long size = ftell(file);
-        fseek(file, 0, SEEK_SET);
-        unsigned char* theFile = (unsigned char*)malloc(size);
-        if(theFile) {
-            fread(theFile, 1, size, file);
-            std::string* responseHeader = formatHeader("1.1", 200);
-            sendResponse(new_fd, responseHeader);
-            std::string* contentLength = new std::string("Content-Length: ");
-            contentLength->append(std::to_string(size));
-            contentLength->append("\n");
-            sendResponse(new_fd, contentLength);
-            std::string* contentType = new std::string("Content-Type: ");
-            
-            switch(checkFileType(theFile, size)) {
-                case 1:
-                    contentType->append("image/jpeg");
-                    break;
-                case 2:
-                    contentType->append("image/png");
-                    break; 
-                default:
-                    contentType->append("text/html");
-                    break;
-            }
-            contentType->append("\n\n");
-            sendResponse(new_fd, contentType);
-
-            long sent = 0;
-            while(sent != size) {
-                long thisSize = send(new_fd, theFile, size - sent, 0);
-                if(thisSize == -1) {
-                    perror("Could not send");
-                    close(new_fd);
-                    return;
+        if(file)
+        {
+            fseek(file, 0, SEEK_END);
+            long size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+            unsigned char* theFile = (unsigned char*)malloc(size);
+            if(theFile) {
+                fread(theFile, 1, size, file);
+                std::string* responseHeader = formatHeader("1.1", 200);
+                sendResponse(new_fd, responseHeader);
+                std::string* contentLength = new std::string("Content-Length: ");
+                contentLength->append(std::to_string(size));
+                contentLength->append("\n");
+                sendResponse(new_fd, contentLength);
+                std::string* contentType = new std::string("Content-Type: ");
+                
+                switch(checkFileType(theFile, size)) {
+                    case 1:
+                        contentType->append("image/jpeg");
+                        break;
+                    case 2:
+                        contentType->append("image/png");
+                        break; 
+                    default:
+                        contentType->append("text/html");
+                        break;
                 }
-                theFile = &(theFile[thisSize]);
-                sent += thisSize;
+                contentType->append("\n\n");
+                sendResponse(new_fd, contentType);
+
+                long sent = 0;
+                while(sent != size) {
+                    long thisSize = send(new_fd, theFile, size - sent, 0);
+                    if(thisSize == -1) {
+                        perror("Could not send");
+                        close(new_fd);
+                        return;
+                    }
+                    theFile = &(theFile[thisSize]);
+                    sent += thisSize;
+                }
+            } else {
+                std::string* responseHeader = formatHeader("1.1", 500);
+                sendResponse(new_fd, responseHeader);
             }
-        } else {
-            std::string* responseHeader = formatHeader("1.1", 500);
-            sendResponse(new_fd, responseHeader);
         }
     }
     close(new_fd);
