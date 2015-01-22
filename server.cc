@@ -348,7 +348,8 @@ void handleConnection(int new_fd, const char* root) {
     }
     free(rec);
     free(buff);
-    errorResponse(new_fd, 500);
+    // If we get to this point there was a timeout
+    errorResponse(new_fd, 400);
 }
 
 int main(int argc, char* argv[]) {
@@ -423,6 +424,13 @@ int main(int argc, char* argv[]) {
         printf("server: got connection from %s\n", s);
 
         if(fork() == 0) {
+            struct timeval tv = {0};
+            tv.tv_sec = 10;
+            if(setsockopt(new_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval))) {
+                perror("couldn't setsockopt");
+                close(new_fd);
+                exit(1);
+            }
             char * root_path = realpath(argv[2], NULL);
             handleConnection(new_fd, root_path);
             free(root_path);
