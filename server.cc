@@ -60,6 +60,7 @@ void sendResponse(int new_fd, std::string* response) {
 
 void errorResponse(int new_fd, int error) {
     std::string* response = formatHeader("1.1", error);
+    // TODO: add Connection: close header here
     sendResponse(new_fd, response);
     close(new_fd);
 }
@@ -80,7 +81,8 @@ int checkFileType(unsigned char *buffer, long length) {
     return 0;
 }
 
-void prepareResponse(int new_fd, const char* root, const char* uri, char* version) {
+// This returns 0 if the connection is not finished
+int prepareResponse(int new_fd, const char* root, const char* uri, char* version, int isClose) {
     std::string uriString = uri;
     std::string location(root);
     int compare_length = location.length();
@@ -99,17 +101,18 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
             // This would happen if the file does not exist
             // TODO: determine if this should be 404 or 400
             errorResponse(new_fd, 404);
-            return;
+            return 1;
         }
         uriString = path;
         free(path);
         if(uriString.compare(0,compare_length, root)) {
             errorResponse(new_fd, 400);
-            return;
+            return 1;
         }
     } else {
         std::string* responseHeader = formatHeader("1.1", 404);
         sendResponse(new_fd, responseHeader);
+        return 1;
     }
     uri = (char*) uriString.c_str();
     printf("Going to respond %s, %s\n", version, uri);
@@ -120,6 +123,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
     if((perm_buf.st_mode & S_IROTH) == 0) {
         std::string* responseHeader = formatHeader("1.1", 403);
         sendResponse(new_fd, responseHeader);
+        return 1;
     } else {
         FILE *file = fopen(uri, "r");
         if(file)
@@ -151,6 +155,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
                 }
                 contentType->append("\n\n");
                 sendResponse(new_fd, contentType);
+                // TODO: if we are going to close we should probably send a Connection: close header
 
                 long sent = 0;
                 while(sent != size) {
@@ -158,7 +163,7 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
                     if(thisSize == -1) {
                         perror("Could not send");
                         close(new_fd);
-                        return;
+                        return 1;
                     }
                     theFile = &(theFile[thisSize]);
                     sent += thisSize;
@@ -169,7 +174,11 @@ void prepareResponse(int new_fd, const char* root, const char* uri, char* versio
             }
         }
     }
-    close(new_fd);
+    if(strcmp(version, "1.1") || isClose) {
+        close(new_fd);
+        return 1;
+    }
+    return 0;
 }
 
 
@@ -195,7 +204,8 @@ int removeCarriageReturn(unsigned char* source, unsigned char* destination, int 
     return length;
 }
 
-void handleConnection(int new_fd, const char* root) {
+// This returns 0 if the connection is not finished.
+int handleConnection(int new_fd, const char* root) {
     unsigned char* rec = (unsigned char*) malloc(BUFFSIZE);
     unsigned char* buff = (unsigned char*) malloc(BUFFSIZE);
     memset(rec, 0, BUFFSIZE);
@@ -204,6 +214,10 @@ void handleConnection(int new_fd, const char* root) {
 
     char methodString[] = "GET";
     char versionString[] = "HTTP/";
+    char connection[] = "Connection";
+    char close[] = ": close";
+    int isClose = 0;
+    int isConnection = 1;
     int lineNum = 0;
     int hasMethod = 0, hasResource = 0;
     int methodLength = 0, versionLength = 0;
@@ -234,7 +248,7 @@ void handleConnection(int new_fd, const char* root) {
                         free(rec);
                         free(buff);
                         errorResponse(new_fd, 400);
-                        return;
+                        return 1;
                     }
                 }
                 if(methodLength == 3) {
@@ -255,14 +269,14 @@ void handleConnection(int new_fd, const char* root) {
                         free(rec);
                         free(buff);
                         errorResponse(new_fd, 400);
-                        return;
+                        return 1;
                     } else {
                         if(resourceLength > URILENGTH) {
                             // We can't handle a resource requested longer than URILENGTH
                             free(rec);
                             free(buff);
                             errorResponse(new_fd, 500);
-                            return;
+                            return 1;
                         }
                         resource[resourceLength] = rec[position];
                         position++;
@@ -287,7 +301,7 @@ void handleConnection(int new_fd, const char* root) {
                     free(rec);
                     free(buff);
                     errorResponse(new_fd, 400);
-                    return;
+                    return 1;
                 }
             }
             while(!isNewline(rec[position]) && position < len) {
@@ -296,7 +310,7 @@ void handleConnection(int new_fd, const char* root) {
                     free(rec);
                     free(buff);
                     errorResponse(new_fd, 400);
-                    return;
+                    return 1;
                 }
                 version[versionLength] = rec[position];
                 position++;
@@ -311,7 +325,7 @@ void handleConnection(int new_fd, const char* root) {
                     free(rec);
                     free(buff);
                     errorResponse(new_fd, 400);
-                    return;
+                    return 1;
                 }
                 printf("Got the version: %s\n", version);
                 lineNum = 1;
@@ -323,8 +337,7 @@ void handleConnection(int new_fd, const char* root) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    prepareResponse(new_fd, root, resource, version);
-                    return;
+                    return prepareResponse(new_fd, root, resource, version, isClose);
                 }
                 if(linePosition == 0) {
                     if(isWhitespace(c)) {
@@ -336,9 +349,26 @@ void handleConnection(int new_fd, const char* root) {
                 }
                 if(c == ':') {
                     lineHasSeparator = 1;
+                    if(isConnection && linePosition == 10) {
+                        isClose = 1;
+                    } else {
+                        isConnection = 0;
+                    }
+                }
+                if(lineHasSeparator == 0) {
+                    if(linePosition > 9 || c != connection[linePosition]) {
+                        isConnection = 0;
+                    }
+                } else {
+                    if(isConnection && (linePosition - 10 > 6 || c != close[linePosition - 10])) {
+                        if(linePosition - 10 != 7 || !isNewline(c)) {
+                            isClose = 0;
+                        }
+                    }
                 }
                 if(isNewline(c)) {
                     linePosition = 0;
+                    isConnection = 1;
                     lineNum++;
                 } else {
                     linePosition++;
@@ -350,6 +380,7 @@ void handleConnection(int new_fd, const char* root) {
     free(buff);
     // If we get to this point there was a timeout
     errorResponse(new_fd, 400);
+    return 1;
 }
 
 int main(int argc, char* argv[]) {
@@ -421,7 +452,7 @@ int main(int argc, char* argv[]) {
 
         inet_ntop(their_addr.ss_family, get_addr((struct sockaddr *)&their_addr),
             s, sizeof s);
-        printf("server: got connection from %s\n", s);
+        printf("server: got connection from %s \n", s);
 
         if(fork() == 0) {
             struct timeval tv = {0};
@@ -432,7 +463,10 @@ int main(int argc, char* argv[]) {
                 exit(1);
             }
             char * root_path = realpath(argv[2], NULL);
-            handleConnection(new_fd, root_path);
+            int finished = 0;
+            while(!finished) {
+                finished = handleConnection(new_fd, root_path);
+            }
             free(root_path);
         }
 
