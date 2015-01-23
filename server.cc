@@ -469,8 +469,6 @@ int main(int argc, char* argv[]) {
             }
             free(root_path);
         }
-
-        close(new_fd);
     }
     return 0;
 }
