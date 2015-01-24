@@ -14,7 +14,7 @@
 #include <string>
 
 #define SERVICE "4587"
-#define BUFFSIZE 1024
+#define BUFFSIZE 1
 #define URILENGTH 2048
 
 
@@ -234,7 +234,7 @@ int handleConnection(int new_fd, const char* root) {
 
     for( ;(len = recv(new_fd, buff, BUFFSIZE, 0)) > 0; memset(buff, 0, BUFFSIZE)) {
         int position = 0;
-        printf("Received: %s\n", buff);
+       // printf("Received: %s\n", buff);
         len = removeCarriageReturn(buff, rec, len);
         if(len < 1) {
             continue;
@@ -468,6 +468,8 @@ int main(int argc, char* argv[]) {
                 finished = handleConnection(new_fd, root_path);
             }
             free(root_path);
+        } else {
+            close(new_fd);
         }
     }
     return 0;
