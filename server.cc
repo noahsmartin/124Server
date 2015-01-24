@@ -60,8 +60,9 @@ void sendResponse(int new_fd, std::string* response) {
 
 void errorResponse(int new_fd, int error) {
     std::string* response = formatHeader("1.1", error);
-    // TODO: add Connection: close header here
     sendResponse(new_fd, response);
+    std::string* contentLength = new std::string("Connection: close\n");
+    sendResponse(new_fd, contentLength);
     close(new_fd);
 }
 
@@ -153,10 +154,13 @@ int prepareResponse(int new_fd, const char* root, const char* uri, char* version
                         contentType->append("text/html");
                         break;
                 }
-                contentType->append("\n\n");
+                contentType->append("\n");
                 sendResponse(new_fd, contentType);
-                // TODO: if we are going to close we should probably send a Connection: close header
-
+                if(!strcmp(version, "1.1") && isClose) {
+                    std::string* contentLength = new std::string("Connection: close\n");
+                    sendResponse(new_fd, contentLength);
+                }
+                sendResponse(new_fd, new std::string("\n"));
                 long sent = 0;
                 while(sent != size) {
                     long thisSize = send(new_fd, theFile, size - sent, 0);
