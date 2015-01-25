@@ -12,6 +12,10 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <string>
+#include <libgen.h>
+#include <sstream>
+#include <fstream>
+#include <iostream>
 
 #define SERVICE "4587"
 #define BUFFSIZE 1
@@ -36,6 +40,8 @@ std::string* formatHeader(const char* version, int error) {
         result->append("Not Found\n");
     } else if(error == 200) {
         result->append("OK\n");
+    } else if(error == 403) {
+        result->append("Forbidden\n");
     }
     return result;
 }
@@ -82,8 +88,87 @@ int checkFileType(unsigned char *buffer, long length) {
     return 0;
 }
 
+// This returns 1 if access to the directory is allowed, 0 otherwise.
+int checkAccess(char * uri, struct in_addr * client_ip) {
+    char s[INET6_ADDRSTRLEN];
+    // check for a .htaccess
+    std::string dirPath(dirname(uri));
+    dirPath.append("/.htaccess");
+    std::ifstream infile(dirPath.c_str());
+    if(infile.fail()) {
+        // reading the infile failed, ignore it and ALLOW EVERYTHINGGG
+        return 1;
+    }
+    // parse the file
+    std::string line, perm, from, rule;
+    while( std::getline(infile, line)) {
+        std::stringstream ss(line);
+        ss >> perm;
+        ss >> from;
+        ss >> rule;
+
+        // parse the rule to determine if it is an ip address or a domain
+        
+        int pos = rule.find_first_of("/");
+        if( pos == std::string::npos) {
+            printf("\nprocessing: %s\n", rule.c_str());
+            // There's no slash character, treat it as a domain name rule.
+            struct addrinfo hints, *res;
+            memset(&hints, 0, sizeof hints);
+            hints.ai_family = AF_INET;
+
+            // Check results 
+            // TODO error handling
+            if(getaddrinfo(rule.c_str(), NULL, &hints, &res) == 0) {
+                // check each element of result
+                while(res != NULL){
+                    inet_ntop(res->ai_addr->sa_family, get_addr((struct sockaddr *)&res->ai_addr),
+                    s, sizeof s);
+                    printf("server: checking connection from %s (%s)\n", s, rule.c_str());
+
+                    if(((in_addr *)get_addr(res->ai_addr))->s_addr == client_ip->s_addr) {
+                        if(perm.compare("allow") == 0) {
+                            return 1;
+                        } else {
+                            return 0;
+                        }
+                    }
+                    res = res -> ai_next;
+                }
+            }
+            freeaddrinfo(res);
+            // if there are no entries (or addrinfo is broken... potential security hazard), 
+            // it cannot possibly match, so treat the rule as pass.
+        }
+        else {
+            // it's an ip rule. Substring it!
+            std::string ip_str = rule.substr(0, pos);
+            std::string bits = rule.substr(pos+1, std::string::npos);
+            std::cout << ip_str;
+            std::cout << bits;
+            uint32_t rule_ip = inet_addr(ip_str.c_str());
+            uint32_t num_bits = atoi(bits.c_str());
+            uint32_t mask = 0xFFFFFFFF;
+            mask = mask << (32 - num_bits);
+
+            if(rule_ip == (client_ip->s_addr & mask)) {
+                printf("%s", perm.c_str());
+                if(perm.compare("allow") == 0) {
+                    return 1;
+                }
+                else {
+                    return 0;
+                }         
+            }  
+        }
+    } 
+    // process one line per rule, apply from top to bottom. default to allow
+     
+    return 1;
+}
+
 // This returns 0 if the connection is not finished
-int prepareResponse(int new_fd, const char* root, const char* uri, char* version, int isClose) {
+int prepareResponse(int new_fd, const char* root, char* uri, char* version, int isClose, struct in_addr * client_ip) {
     std::string uriString = uri;
     std::string location(root);
     int compare_length = location.length();
@@ -121,11 +206,11 @@ int prepareResponse(int new_fd, const char* root, const char* uri, char* version
     struct stat perm_buf = {0};
     lstat(uri, &perm_buf);
     // check if file is world-readable
-    if((perm_buf.st_mode & S_IROTH) == 0) {
-        std::string* responseHeader = formatHeader("1.1", 403);
-        sendResponse(new_fd, responseHeader);
+    if(((perm_buf.st_mode & S_IROTH) == 0) || (!checkAccess(uri, client_ip))) {
+        errorResponse(new_fd, 403);
         return 1;
-    } else {
+    }
+    else {
         FILE *file = fopen(uri, "r");
         if(file)
         {
@@ -209,7 +294,7 @@ int removeCarriageReturn(unsigned char* source, unsigned char* destination, int 
 }
 
 // This returns 0 if the connection is not finished.
-int handleConnection(int new_fd, const char* root) {
+int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     unsigned char* rec = (unsigned char*) malloc(BUFFSIZE);
     unsigned char* buff = (unsigned char*) malloc(BUFFSIZE);
     memset(rec, 0, BUFFSIZE);
@@ -341,7 +426,7 @@ int handleConnection(int new_fd, const char* root) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    return prepareResponse(new_fd, root, resource, version, isClose);
+                    return prepareResponse(new_fd, root, resource, version, isClose, client_ip);
                 }
                 if(linePosition == 0) {
                     if(isWhitespace(c)) {
@@ -469,7 +554,7 @@ int main(int argc, char* argv[]) {
             char * root_path = realpath(argv[2], NULL);
             int finished = 0;
             while(!finished) {
-                finished = handleConnection(new_fd, root_path);
+                finished = handleConnection(new_fd, root_path, (struct in_addr *)get_addr((struct sockaddr *)&their_addr));
             }
             free(root_path);
         } else {
