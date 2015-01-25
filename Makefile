@@ -1,4 +1,4 @@
 all: server
 
 server: server.cc
-	g++ server.cc -o httpd
+	g++ -std=c++0x -Wall -g server.cc -o httpd 

@@ -73,10 +73,21 @@ void errorResponse(int new_fd, int error) {
 }
 
 int checkFileType(unsigned char *buffer, long length) {
-    char jpg_start[2] = {0xFF,0xD8};
-    char jpg_end[2] = {0xFF, 0xD9};
-    char png_sig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
- 
+    char jpg_start[2];
+    jpg_start[0] = 0xFF;
+    jpg_start[1] = 0xD8;
+    char jpg_end[2];
+    jpg_end[0] = 0xFF;
+    jpg_end[1] = 0xD9;
+    char png_sig[8];
+    png_sig[0] = 0x89;
+    png_sig[1] = 0x50;
+    png_sig[2] = 0x4E; 
+    png_sig[3] = 0x47;
+    png_sig[4] = 0x0D;
+    png_sig[5] = 0x0A;
+    png_sig[6] = 0x1A;
+    png_sig[7] = 0x0A;
     printf("\nlength: %ld\n", length);
     if(length >= 4 && memcmp(buffer, jpg_start, 2) == 0 
        && memcmp(buffer+length-2, jpg_end, 2) == 0) {
@@ -108,8 +119,7 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
         ss >> rule;
 
         // parse the rule to determine if it is an ip address or a domain
-        
-        int pos = rule.find_first_of("/");
+        size_t pos = rule.find_first_of("/");
         if( pos == std::string::npos) {
             printf("\nprocessing: %s\n", rule.c_str());
             // There's no slash character, treat it as a domain name rule.
@@ -124,7 +134,7 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
                 while(res != NULL){
                     inet_ntop(res->ai_addr->sa_family, get_addr((struct sockaddr *)&res->ai_addr),
                     s, sizeof s);
-                    printf("server: checking connection from %s (%s)\n", s, rule.c_str());
+                    printf("\nserver: checking connection from %s (%s)\n", s, rule.c_str());
 
                     if(((in_addr *)get_addr(res->ai_addr))->s_addr == client_ip->s_addr) {
                         if(perm.compare("allow") == 0) {
@@ -205,8 +215,9 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
 
     struct stat perm_buf = {0};
     lstat(uri, &perm_buf);
+    std::string uriCopy(uri);
     // check if file is world-readable
-    if(((perm_buf.st_mode & S_IROTH) == 0) || (!checkAccess(uri, client_ip))) {
+    if(((perm_buf.st_mode & S_IROTH) == 0) || (!checkAccess((char*)uriCopy.c_str(), client_ip))) {
         errorResponse(new_fd, 403);
         return 1;
     }
@@ -299,7 +310,6 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     unsigned char* buff = (unsigned char*) malloc(BUFFSIZE);
     memset(rec, 0, BUFFSIZE);
     int len;
-    int newline = 0;
 
     char methodString[] = "GET";
     char versionString[] = "HTTP/";
