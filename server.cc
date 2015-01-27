@@ -153,7 +153,7 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
             uint32_t mask = 0xFFFFFFFF;
             mask = mask << (32 - num_bits);
 
-            if(rule_ip == (client_ip->s_addr & mask)) {
+            if((rule_ip & mask) == (client_ip->s_addr & mask)) {
                 printf("%s", perm.c_str());
                 if(perm.compare("allow") == 0) {
                     return 1;
