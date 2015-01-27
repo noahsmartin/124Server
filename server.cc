@@ -20,6 +20,7 @@
 #define SERVICE "4587"
 #define BUFFSIZE 1
 #define URILENGTH 2048
+#define BLOCKSIZE 1024
 
 std::string* formatHeader(const char* version, int error) {
     char buffer[15];
@@ -169,6 +170,26 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
     return 1;
 }
 
+long min(long a, long b) {
+    if(a < b) {
+        return a;
+    }
+    return b;
+}
+
+int sendData(int fd, unsigned char* buffer, int size) {
+    int sent = 0;
+    while(sent < size) {
+        int result = send(fd, buffer, size - sent, 0);
+        if(result <= 0) {
+            return result;
+        }
+        buffer = &buffer[result];
+        sent += result;
+    }
+    return size;
+}
+
 // This returns 0 if the connection is not finished
 int prepareResponse(int new_fd, const char* root, char* uri, char* version, int isClose, struct in_addr * client_ip) {
     std::string uriString = uri;
@@ -220,9 +241,9 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
             fseek(file, 0, SEEK_END);
             long size = ftell(file);
             fseek(file, 0, SEEK_SET);
-            unsigned char* theFile = (unsigned char*)malloc(size);
+            unsigned char* theFile = (unsigned char*)malloc(BLOCKSIZE);
             if(theFile) {
-                fread(theFile, 1, size, file);
+                fread(theFile, 1, BLOCKSIZE, file);
                 std::string* responseHeader = formatHeader("1.1", 200);
                 sendResponse(new_fd, responseHeader);
                 std::string* contentLength = new std::string("Content-Length: ");
@@ -250,15 +271,14 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
                 }
                 sendResponse(new_fd, new std::string("\n"));
                 long sent = 0;
-                while(sent != size) {
-                    long thisSize = send(new_fd, theFile, size - sent, 0);
-                    if(thisSize == -1) {
+                while(sent < size) {
+                    if(sendData(new_fd, theFile, min(BLOCKSIZE, size-sent)) <= 0) {
                         perror("Could not send");
                         close(new_fd);
                         return 1;
                     }
-                    theFile = &(theFile[thisSize]);
-                    sent += thisSize;
+                    sent += min(BLOCKSIZE, size-sent);
+                    fread(theFile, 1, BLOCKSIZE, file);
                 }
             } else {
                 std::string* responseHeader = formatHeader("1.1", 500);
