@@ -21,14 +21,6 @@
 #define BUFFSIZE 1
 #define URILENGTH 2048
 
-
-void* get_addr(struct sockaddr *sa) {
-    if(sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*) sa)->sin_addr);
-    }
-    return &(((struct sockaddr_in6*) sa)->sin6_addr);
-}
-
 std::string* formatHeader(const char* version, int error) {
     char buffer[15];
     bzero(buffer, 15);
@@ -132,11 +124,11 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
             if(getaddrinfo(rule.c_str(), NULL, &hints, &res) == 0) {
                 // check each element of result
                 while(res != NULL){
-                    inet_ntop(res->ai_addr->sa_family, get_addr((struct sockaddr *)&res->ai_addr),
-                    s, sizeof s);
+                    void* check_addr = &((struct sockaddr_in*)res->ai_addr)->sin_addr;
+                    inet_ntop(res->ai_addr->sa_family, check_addr, s, sizeof s);
                     printf("\nserver: checking connection from %s (%s)\n", s, rule.c_str());
 
-                    if(((in_addr *)get_addr(res->ai_addr))->s_addr == client_ip->s_addr) {
+                    if(((in_addr *) check_addr)->s_addr == client_ip->s_addr) {
                         if(perm.compare("allow") == 0) {
                             return 1;
                         } else {
@@ -485,15 +477,8 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
 int main(int argc, char* argv[]) {
     int sock_fd, new_fd;
     socklen_t addr_size = sizeof(struct sockaddr_storage);
-    struct  addrinfo hints, *res, *p;
-    struct sockaddr_storage their_addr;
-    int result;
+    struct sockaddr_in address, client_address;
     char s[INET6_ADDRSTRLEN];
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
 
     if(argc < 3) {
         printf("Usage: ./httpd [PORT] [PATH]\n");
@@ -507,50 +492,46 @@ int main(int argc, char* argv[]) {
     }
     free(thepath);
 
+    client_address = {0};
+    address = {0};
 
-    if ((result = getaddrinfo(NULL, argv[1], &hints, &res)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
-        return 1;
+    if((sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+        // Could not create socket.
+        exit(1);
     }
 
-    for(p = res; p != NULL; p = p->ai_next) {
-        if((sock_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            // Lock for another
-            continue;
-        }
+    printf("We got this socket: %d\n", sock_fd);
 
-        printf("We got this socket: %d\n", sock_fd);
-
-        int allow = 1;
-        if(setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &allow, sizeof(int)) == -1) {
-            perror("couldnt setsockopt");
-            exit(1);
-        }
-
-        if(bind(sock_fd, p->ai_addr, p->ai_addrlen) == -1) {
-            // Try another
-            close(sock_fd);
-            continue;
-        }
-        break;
+    int allow = 1;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &allow, sizeof(int)) < 0) {
+        perror("couldnt setsockopt");
+        exit(1);
     }
-    freeaddrinfo(res);
 
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(atoi(argv[1]));
 
-    if(listen(sock_fd, 10) == -1) {
+    if(bind(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0) {
+        // Try another
+        close(sock_fd);
+        exit(1);
+    }
+
+    if(listen(sock_fd, 128) < 0) {
         perror("couldn't listen");
         exit(1);
     }
 
     while(1) {
-        new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
+        new_fd = accept(sock_fd, (struct sockaddr *)&client_address, &addr_size);
         if(new_fd == -1) {
             // Something went wrong, we couldn't connect to the client
             continue;
         }
 
-        inet_ntop(their_addr.ss_family, get_addr((struct sockaddr *)&their_addr),
-            s, sizeof s);
+        struct in_addr * client_addr = &(client_address.sin_addr);
+        inet_ntop(AF_INET, client_addr, s, sizeof s);
         printf("server: got connection from %s \n", s);
 
         if(fork() == 0) {
@@ -564,7 +545,7 @@ int main(int argc, char* argv[]) {
             char * root_path = realpath(argv[2], NULL);
             int finished = 0;
             while(!finished) {
-                finished = handleConnection(new_fd, root_path, (struct in_addr *)get_addr((struct sockaddr *)&their_addr));
+                finished = handleConnection(new_fd, root_path, client_addr);
             }
             free(root_path);
         } else {
