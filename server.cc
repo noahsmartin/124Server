@@ -96,7 +96,7 @@ int checkFileType(unsigned char *buffer, long length) {
 int checkAccess(char * uri, struct in_addr * client_ip) {
     char s[INET6_ADDRSTRLEN];
     // check for a .htaccess
-    std::string dirPath(dirname(uri));
+    std::string dirPath((uri));
     dirPath.append("/.htaccess");
     std::ifstream infile(dirPath.c_str());
     if(infile.fail()) {
@@ -199,11 +199,20 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
         location.append(uriString);
         struct stat st_buf = {0};
         lstat(location.c_str(), &st_buf);
-        if(S_ISDIR(st_buf.st_mode)){
+        if(S_ISDIR(st_buf.st_mode)) {
             location.append("/index.html");
         }
-        errno = 0;
         char* path = realpath(location.c_str(), NULL);
+        std::string locCopy(location.c_str());
+        char * dir = dirname((char*)locCopy.c_str());
+        // check for 403 first
+        if(dir != NULL && !checkAccess(dir, client_ip)) {
+            errorResponse(new_fd, 403);
+            return 1;
+        }
+        // reset the path (with errno for safety)
+        errno = 0;
+        path = realpath(location.c_str(), NULL);
         if(errno) {
             free(path);
             perror("Error getting real path");
@@ -230,7 +239,7 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
     lstat(uri, &perm_buf);
     std::string uriCopy(uri);
     // check if file is world-readable
-    if(((perm_buf.st_mode & S_IROTH) == 0) || (!checkAccess((char*)uriCopy.c_str(), client_ip))) {
+    if((perm_buf.st_mode & S_IROTH) == 0) {
         errorResponse(new_fd, 403);
         return 1;
     }
