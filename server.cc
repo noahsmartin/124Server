@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iostream>
 
+
 #define SERVICE "4587"
 #define BUFFSIZE 1
 #define URILENGTH 2048
@@ -82,8 +83,7 @@ int checkFileType(unsigned char *buffer, long length) {
     png_sig[6] = 0x1A;
     png_sig[7] = 0x0A;
     printf("\nlength: %ld\n", length);
-    if(length >= 4 && memcmp(buffer, jpg_start, 2) == 0 
-       && memcmp(buffer+length-2, jpg_end, 2) == 0) {
+    if(length >= 4 && memcmp(buffer, jpg_start, 2) == 0) {
             return 1; 
         }
     else if(length >= 8 && memcmp(buffer, png_sig, 8) == 0) {
@@ -325,6 +325,18 @@ int removeCarriageReturn(unsigned char* source, unsigned char* destination, int 
     return length;
 }
 
+bool isDouble(char* string) {
+    char* ptr = 0;
+    strtod(string, &ptr);
+    if(*ptr != '\0') {
+        return 0;
+    }
+    if(ptr == string) {
+        return 0;
+    }
+    return 1;
+}
+
 // This returns 0 if the connection is not finished.
 int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     unsigned char* rec = (unsigned char*) malloc(BUFFSIZE);
@@ -343,7 +355,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     int methodLength = 0, versionLength = 0;
     char resource[URILENGTH+1];  // This will hold the URI resource
     int resourceLength = 0;
-    char version[4];
+    char version[1024] = {0};
     int versionStringLength = 0;
 
     int linePosition = 0;
@@ -426,11 +438,11 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 }
             }
             while(!isNewline(rec[position]) && position < len) {
-                if(versionLength > 2) {
-                    // Version shouldn't be longer than 3.
+                if(versionLength > 1023) {
+                    // We can't handle a version longer than 1023
                     free(rec);
                     free(buff);
-                    errorResponse(new_fd, 400);
+                    errorResponse(new_fd, 500);
                     return 1;
                 }
                 version[versionLength] = rec[position];
@@ -442,7 +454,9 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 continue;
             }
             if(isNewline(rec[position])) {
-                if(strcmp(version, "1.0") && strcmp(version, "1.1")) {
+                char* dotStart = strstr(version, ".");
+                if(!isDouble(version) ||
+                  (dotStart == NULL || dotStart == version || dotStart == version + strlen(version) - 1)) {
                     free(rec);
                     free(buff);
                     errorResponse(new_fd, 400);
