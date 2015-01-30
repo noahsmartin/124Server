@@ -348,6 +348,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
 
     int linePosition = 0;
     int lineHasSeparator = 0;
+    int currentLinePosition = 0;
 
     memset(resource, 0, URILENGTH+1);
     memset(version, 0, 4);
@@ -441,7 +442,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 continue;
             }
             if(isNewline(rec[position])) {
-                if(!strcmp(version, "1.0") && !strcmp(version, "1.1")) {
+                if(strcmp(version, "1.0") && strcmp(version, "1.1")) {
                     free(rec);
                     free(buff);
                     errorResponse(new_fd, 400);
@@ -465,23 +466,24 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                         continue;
                     } else {
                         lineHasSeparator = 0;
+                        currentLinePosition = 0;
                     }
                 }
                 if(c == ':') {
                     lineHasSeparator = 1;
-                    if(isConnection && linePosition == 10) {
+                    if(isConnection && currentLinePosition == 10) {
                         isClose = 1;
                     } else {
                         isConnection = 0;
                     }
                 }
                 if(lineHasSeparator == 0) {
-                    if(linePosition > 9 || c != connection[linePosition]) {
+                    if(currentLinePosition > 9 || tolower(c) != tolower(connection[currentLinePosition])) {
                         isConnection = 0;
                     }
                 } else {
-                    if(isConnection && (linePosition - 10 > 6 || c != close[linePosition - 10])) {
-                        if(linePosition - 10 != 7 || !isNewline(c)) {
+                    if(isConnection && (currentLinePosition - 10 > 6 || c != close[currentLinePosition - 10])) {
+                        if(currentLinePosition - 10 != 7 || !isNewline(c)) {
                             isClose = 0;
                         }
                     }
@@ -492,6 +494,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                     lineNum++;
                 } else {
                     linePosition++;
+                    currentLinePosition++;
                 }
             }
         }
@@ -542,13 +545,14 @@ int main(int argc, char* argv[]) {
     address.sin_port = htons(atoi(argv[1]));
 
     if(bind(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0) {
-        // Try another
+        perror("Couldn't bind");
         close(sock_fd);
         exit(1);
     }
 
     if(listen(sock_fd, 128) < 0) {
         perror("couldn't listen");
+        close(sock_fd);
         exit(1);
     }
 
