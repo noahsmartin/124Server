@@ -425,7 +425,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 }
             }
             while(!isNewline(rec[position]) && position < len) {
-                if(versionLength > 3) {
+                if(versionLength > 2) {
                     // Version shouldn't be longer than 3.
                     free(rec);
                     free(buff);
