@@ -40,6 +40,19 @@ std::string* formatHeader(const char* version, int error) {
     return result;
 }
 
+int removeCarriageReturn(unsigned char* source, unsigned char* destination, int maxLength) {
+    memset(destination, 0, BUFFSIZE);
+    int length = 0;
+    int i = 0;
+    for(i = 0; i < maxLength; i++) {
+        if(source[i] != '\r') {
+            destination[length] = source[i];
+            length++;
+        }
+    }
+    return length;
+}
+
 void sendResponse(int new_fd, std::string* response) {
     int length = response->length();
     int sentLength = 0;
@@ -64,6 +77,27 @@ void errorResponse(int new_fd, int error) {
     std::string* contentLength = new std::string("Connection: close\n");
     sendResponse(new_fd, contentLength);
     close(new_fd);
+}
+
+void errorWaitResponse(int new_fd, int error, char last) {
+    unsigned char* rec = (unsigned char*) malloc(1);
+    unsigned char* buff = (unsigned char*) malloc(1);
+    memset(rec, 0, 1);
+    int len;
+    // Read one byte at a time looking for two newlines in a row.
+    for( ;(len = recv(new_fd, buff, 1, 0)) > 0; memset(buff, 0, 1)) {
+        len = removeCarriageReturn(buff, rec, len);
+        if(len < 1) {
+            continue;
+        }
+        if(rec[0] == '\n') {
+            if(last == '\n') {
+                errorResponse(new_fd, error);
+                break;
+            }
+        }
+        last = rec[0];
+    }
 }
 
 int checkFileType(unsigned char *buffer, long length) {
@@ -302,27 +336,12 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
     return 0;
 }
 
-
-
 int isNewline(unsigned char c) {
     return (c == '\n' || c == '\r');
 }
 
 int isWhitespace(unsigned char c) {
     return (c == ' ' || c == '\t');
-}
-
-int removeCarriageReturn(unsigned char* source, unsigned char* destination, int maxLength) {
-    memset(destination, 0, BUFFSIZE);
-    int length = 0;
-    int i = 0;
-    for(i = 0; i < maxLength; i++) {
-        if(source[i] != '\r') {
-            destination[length] = source[i];
-            length++;
-        }
-    }
-    return length;
 }
 
 bool isDouble(char* string) {
@@ -378,9 +397,9 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
             if(!hasMethod) {
                 for(; methodLength < 3 && position < len; methodLength++, position++) {
                     if(methodString[methodLength] != rec[position]) {
+                        errorWaitResponse(new_fd, 400, rec[position]);
                         free(rec);
                         free(buff);
-                        errorResponse(new_fd, 400);
                         return 1;
                     }
                 }
@@ -399,16 +418,16 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 while(position < len && !isWhitespace(rec[position])) {
                     if(isNewline(rec[position])) {
                         // We don't expect a newline before the HTTP version
+                        errorWaitResponse(new_fd, 400, rec[position]);
                         free(rec);
                         free(buff);
-                        errorResponse(new_fd, 400);
                         return 1;
                     } else {
                         if(resourceLength > URILENGTH) {
                             // We can't handle a resource requested longer than URILENGTH
+                            errorWaitResponse(new_fd, 500, rec[position]);
                             free(rec);
                             free(buff);
-                            errorResponse(new_fd, 500);
                             return 1;
                         }
                         resource[resourceLength] = rec[position];
@@ -431,18 +450,18 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
             }
             for(; versionStringLength < 5 && position < len; versionStringLength++, position++) {
                 if(versionString[versionStringLength] != rec[position]) {
+                    errorWaitResponse(new_fd, 400, rec[position]);
                     free(rec);
                     free(buff);
-                    errorResponse(new_fd, 400);
                     return 1;
                 }
             }
             while(!isNewline(rec[position]) && position < len) {
                 if(versionLength > 1023) {
                     // We can't handle a version longer than 1023
+                    errorWaitResponse(new_fd, 500, rec[position]);
                     free(rec);
                     free(buff);
-                    errorResponse(new_fd, 500);
                     return 1;
                 }
                 version[versionLength] = rec[position];
@@ -457,9 +476,9 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 char* dotStart = strstr(version, ".");
                 if(!isDouble(version) ||
                   (dotStart == NULL || dotStart == version || dotStart == version + strlen(version) - 1)) {
+                    errorWaitResponse(new_fd, 400, rec[position]);
                     free(rec);
                     free(buff);
-                    errorResponse(new_fd, 400);
                     return 1;
                 }
                 printf("Got the version: %s\n", version);
