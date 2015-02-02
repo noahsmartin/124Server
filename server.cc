@@ -366,9 +366,8 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     char methodString[] = "GET";
     char versionString[] = "HTTP/";
     char connection[] = "Connection";
-    char close[] = ": close";
-    int isClose = 0;
     int isConnection = 1;
+    std::string connectionValue;
     int lineNum = 0;
     int hasMethod = 0, hasResource = 0;
     int methodLength = 0, versionLength = 0;
@@ -491,7 +490,12 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 unsigned char c = rec[position];
                 if(linePosition == 0 && isNewline(c)) {
                     // Request is finished.
-                    return prepareResponse(new_fd, root, resource, version, isClose, client_ip);
+                    connectionValue.erase(0, 1);
+                    std::size_t foundFirst = connectionValue.find_first_not_of(" \t\n");
+                    connectionValue.erase(0, foundFirst);
+                    printf("found: %s\n", connectionValue.c_str());
+                    bool close = !strcmp(connectionValue.c_str(), "close\n");
+                    return prepareResponse(new_fd, root, resource, version, close, client_ip);
                 }
                 if(linePosition == 0) {
                     if(isWhitespace(c)) {
@@ -504,9 +508,7 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 }
                 if(c == ':') {
                     lineHasSeparator = 1;
-                    if(isConnection && currentLinePosition == 10) {
-                        isClose = 1;
-                    } else {
+                    if(currentLinePosition == 0) {
                         isConnection = 0;
                     }
                 }
@@ -515,10 +517,8 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                         isConnection = 0;
                     }
                 } else {
-                    if(isConnection && (currentLinePosition - 10 > 6 || c != close[currentLinePosition - 10])) {
-                        if(currentLinePosition - 10 != 7 || !isNewline(c)) {
-                            isClose = 0;
-                        }
+                    if(isConnection) {
+                        connectionValue.append(1, c);
                     }
                 }
                 if(isNewline(c)) {
