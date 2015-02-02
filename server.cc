@@ -366,10 +366,8 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     char methodString[] = "GET";
     char versionString[] = "HTTP/";
     char connection[] = "Connection";
-    char close[] = "close";
+    char close[] = ": close";
     int isClose = 0;
-    int closeState = 0;
-    int closePos = 0;
     int isConnection = 1;
     int lineNum = 0;
     int hasMethod = 0, hasResource = 0;
@@ -517,64 +515,9 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                         isConnection = 0;
                     }
                 } else {
-                    /* statework:
-                       state 0: the singular colon character from connection establishment.
-                       state 1: just after connection (require one whitespace character)
-                       state 2: after 1 whitespace character (need to be either c or another whitespace)
-                       state 3: after c, needs to follow with rest of close array characters
-                       state 4: after 'close', can follow any more whitespace characters or the newline.
-                    */
-                    if(isConnection && closeState == 0) {
-                        if(c != ':'){
+                    if(isConnection && (currentLinePosition - 10 > 6 || c != close[currentLinePosition - 10])) {
+                        if(currentLinePosition - 10 != 7 || !isNewline(c)) {
                             isClose = 0;
-                        }
-                        else if(isClose == 1) {
-                            closeState++;
-                        }
-                    }
-                    else if(isConnection && closeState == 1){
-                        //printf("\nstage 1\n");
-                        if( !isWhitespace(c)){
-                            isClose = 0;
-                        }
-                        else {
-                            if(isClose == 1){
-                                closeState++;
-                            }
-                        }
-                    }
-                    else if(isConnection && closeState == 2) {
-                        //printf("\nstage 2\n");
-                        if( c == close[closePos]){
-                            closeState++;
-                            closePos++;
-                        }
-                        else if(!isWhitespace(c)){
-                            isClose = 0;
-                            closeState = 0;
-                            closePos = 0;
-                        }
-                    }
-                    else if(isConnection && closeState == 3) {
-                        //printf("\nstage 3\n");
-                        if(closePos == 5){
-                            closeState++;
-                        }
-                        else if( c == close[closePos]){
-                            closePos++;
-                        }
-                        else {
-                            isClose = 0;
-                            closeState = 0;
-                            closePos = 0;
-                        }
-                    }
-                    else if(isConnection && closeState == 4) {
-                        //printf("\nstage 4\n");
-                        if(!isWhitespace(c) && !isNewline(c)){
-                            isClose = 0;
-                            closeState = 0;
-                            closePos = 0;
                         }
                     }
                 }
