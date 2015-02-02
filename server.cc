@@ -356,6 +356,25 @@ bool isDouble(char* string) {
     return 1;
 }
 
+void trimNewlineSpaces(std::string &input) {
+    std::size_t found = input.find_first_of("\n");
+    while(found != std::string::npos) {
+        input.erase(found, 1);
+        while(found < input.length() && isWhitespace(input.at(found))) {
+            input.erase(found, 1);
+        }
+        found = input.find_first_of("\n");
+    }
+}
+
+void stringToLower(std::string &input) {
+    int i;
+    for(i = 0; i < input.length(); i++) {
+        char lower = std::tolower(input.c_str()[i]);
+        input[i] = lower;
+    }
+}
+
 // This returns 0 if the connection is not finished.
 int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
     unsigned char* rec = (unsigned char*) malloc(BUFFSIZE);
@@ -365,8 +384,8 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
 
     char methodString[] = "GET";
     char versionString[] = "HTTP/";
-    char connection[] = "Connection";
     int isConnection = 1;
+    std::string connectionKey;
     std::string connectionValue;
     int lineNum = 0;
     int hasMethod = 0, hasResource = 0;
@@ -493,8 +512,11 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                     connectionValue.erase(0, 1);
                     std::size_t foundFirst = connectionValue.find_first_not_of(" \t\n");
                     connectionValue.erase(0, foundFirst);
-                    printf("found: %s\n", connectionValue.c_str());
-                    bool close = !strcmp(connectionValue.c_str(), "close\n");
+                    if(connectionValue.length() > 0) {
+                        connectionValue.erase(connectionValue.length()-1, 1);
+                    }
+                    trimNewlineSpaces(connectionValue);
+                    bool close = !strcmp(connectionValue.c_str(), "close");
                     return prepareResponse(new_fd, root, resource, version, close, client_ip);
                 }
                 if(linePosition == 0) {
@@ -504,18 +526,19 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                     } else {
                         lineHasSeparator = 0;
                         currentLinePosition = 0;
+                        isConnection = 0;
                     }
                 }
                 if(c == ':') {
                     lineHasSeparator = 1;
-                    if(currentLinePosition == 0) {
-                        isConnection = 0;
+                    trimNewlineSpaces(connectionKey);
+                    stringToLower(connectionKey);
+                    if(strcmp(connectionKey.c_str(), "connection") == 0) {
+                        isConnection = 1;
                     }
                 }
                 if(lineHasSeparator == 0) {
-                    if(currentLinePosition > 9 || tolower(c) != tolower(connection[currentLinePosition])) {
-                        isConnection = 0;
-                    }
+                    connectionKey.append(1, c);
                 } else {
                     if(isConnection) {
                         connectionValue.append(1, c);
@@ -523,7 +546,6 @@ int handleConnection(int new_fd, const char* root, struct in_addr * client_ip) {
                 }
                 if(isNewline(c)) {
                     linePosition = 0;
-                    isConnection = 1;
                     lineNum++;
                 } else {
                     linePosition++;
