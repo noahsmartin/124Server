@@ -36,6 +36,8 @@ std::string* formatHeader(const char* version, int error) {
         result->append("OK\n");
     } else if(error == 403) {
         result->append("Forbidden\n");
+    } else if(error == 500) {
+        result->append("Internal Server Error\n");
     }
     return result;
 }
