@@ -155,7 +155,6 @@ int checkAccess(char * uri, struct in_addr * client_ip) {
             hints.ai_family = AF_INET;
 
             // Check results 
-            // TODO error handling
             if(getaddrinfo(rule.c_str(), NULL, &hints, &res) == 0) {
                 // check each element of result
                 while(res != NULL){
@@ -236,7 +235,6 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
         if(S_ISDIR(st_buf.st_mode)) {
             location.append("/index.html");
         }
-        char* path = realpath(location.c_str(), NULL);
         std::string locCopy(location.c_str());
         char * dir = dirname((char*)locCopy.c_str());
         // check for 403 first
@@ -246,7 +244,7 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
         }
         // reset the path (with errno for safety)
         errno = 0;
-        path = realpath(location.c_str(), NULL);
+        char* path = realpath(location.c_str(), NULL);
         if(errno) {
             free(path);
             perror("Error getting real path");
