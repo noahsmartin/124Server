@@ -104,9 +104,6 @@ int checkFileType(unsigned char *buffer, long length) {
     char jpg_start[2];
     jpg_start[0] = 0xFF;
     jpg_start[1] = 0xD8;
-    char jpg_end[2];
-    jpg_end[0] = 0xFF;
-    jpg_end[1] = 0xD9;
     char png_sig[8];
     png_sig[0] = 0x89;
     png_sig[1] = 0x50;
@@ -225,25 +222,27 @@ int sendData(int fd, unsigned char* buffer, int size) {
 
 int checkPath(std::string path) {
     int level = 0;
-    int lastFound = path.find("/");
-    printf("Checking for path: %s\n", path.c_str());
+    size_t lastFound = path.find("/");
     while(true) {
-        int found = path.find("/", lastFound+1);
+        size_t found = path.find("/", lastFound+1);
         if(found == std::string::npos) {
             return level;
         }
-        printf("lastFond is %d, found is %d\n", lastFound, found);
         if(found == lastFound + 2) {
             if(strcmp(path.substr(lastFound, 3).c_str(), "/./") == 0) {
-                printf("Found a .\n");
+            //   printf("Found a .\n");
+            } else {
+                level++;
             }
         } else if(found == lastFound + 3) {
             if(strcmp(path.substr(lastFound, 4).c_str(), "/../") == 0) {
-                printf("Found a ..\n");
+            //    printf("Found a ..\n");
                 level--;
+            } else {
+                level++;
             }
         } else {
-            printf("Regular \n");
+            //printf("Regular \n");
             level++;
         }
         lastFound = found;
@@ -395,7 +394,7 @@ void trimNewlineSpaces(std::string &input) {
 }
 
 void stringToLower(std::string &input) {
-    int i;
+    unsigned int i;
     for(i = 0; i < input.length(); i++) {
         char lower = std::tolower(input.c_str()[i]);
         input[i] = lower;
