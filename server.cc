@@ -223,6 +223,33 @@ int sendData(int fd, unsigned char* buffer, int size) {
     return size;
 }
 
+int checkPath(std::string path) {
+    int level = 0;
+    int lastFound = path.find("/");
+    printf("Checking for path: %s\n", path.c_str());
+    while(true) {
+        int found = path.find("/", lastFound+1);
+        if(found == std::string::npos) {
+            return level;
+        }
+        printf("lastFond is %d, found is %d\n", lastFound, found);
+        if(found == lastFound + 2) {
+            if(strcmp(path.substr(lastFound, 3).c_str(), "/./") == 0) {
+                printf("Found a .\n");
+            }
+        } else if(found == lastFound + 3) {
+            if(strcmp(path.substr(lastFound, 4).c_str(), "/../") == 0) {
+                printf("Found a ..\n");
+                level--;
+            }
+        } else {
+            printf("Regular \n");
+            level++;
+        }
+        lastFound = found;
+    }
+}
+
 // This returns 0 if the connection is not finished
 int prepareResponse(int new_fd, const char* root, char* uri, char* version, int isClose, struct in_addr * client_ip) {
     std::string uriString = uri;
@@ -249,8 +276,10 @@ int prepareResponse(int new_fd, const char* root, char* uri, char* version, int 
             free(path);
             perror("Error getting real path");
             // This would happen if the file does not exist
-            // TODO: determine if this should be 404 or 400
-            errorResponse(new_fd, 404);
+            // We add one to the root level here because it does not end in a "/"
+            int rootLevel = checkPath(root) + 1;
+            int level = checkPath(location);
+            errorResponse(new_fd, level >= rootLevel ? 404 : 403);
             return 1;
         }
         uriString = path;
